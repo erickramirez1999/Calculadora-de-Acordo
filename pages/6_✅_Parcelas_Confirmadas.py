@@ -1,0 +1,29 @@
+"""Página Parcelas Confirmadas — histórico de pagamentos confirmados pelo admin."""
+import sys
+from pathlib import Path
+
+import streamlit as st
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.utils.estilo import aplicar_css_lle
+from src.banco.schema import inicializar_banco
+
+st.set_page_config(page_title="Parcelas Confirmadas · LLE", page_icon="✅", layout="wide")
+
+if "banco_inicializado" not in st.session_state:
+    inicializar_banco()
+    st.session_state["banco_inicializado"] = True
+
+aplicar_css_lle()
+
+from src.utils.auth_guard import exigir_login_ou_parar
+usuario = exigir_login_ou_parar()
+
+from src.modelos.tipos import PerfilUsuario
+if usuario.perfil not in (PerfilUsuario.ADMIN, PerfilUsuario.COBRANCA):
+    st.error("Acesso restrito a Administradores e equipe de Cobrança.")
+    st.stop()
+
+from src.telas.parcelas_confirmadas import renderizar_parcelas_confirmadas
+renderizar_parcelas_confirmadas(usuario)
