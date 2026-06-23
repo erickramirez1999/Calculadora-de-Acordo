@@ -15,11 +15,13 @@ import streamlit as st
 
 from src.banco import repo_acordo
 from src.modelos.tipos import PerfilUsuario
+from src.utils.feedback import drenar_mensagens
 from src.utils.formatadores import formatar_brl, formatar_data, formatar_hora
 from src.utils.marca import AZUL_ESCURO, VERDE, AMARELO
 
 
 def renderizar_parcelas_confirmadas(usuario):
+    drenar_mensagens()
     st.markdown(
         f"<h1 style='color:{AZUL_ESCURO}'>✅ Parcelas Confirmadas</h1>",
         unsafe_allow_html=True,

@@ -33,6 +33,7 @@ from src.servicos.leitor_xlsx import (
     importar_xlsx_titulos,
     montar_relatorio_importacao,
 )
+from src.utils.feedback import drenar_mensagens
 from src.utils.formatadores import formatar_brl, formatar_data
 from src.utils.marca import AZUL_ESCURO, AMARELO, VERDE
 
@@ -41,6 +42,7 @@ CHAVE_ESTADO = "wizard"
 
 
 def renderizar_wizard(usuario):
+    drenar_mensagens()
     # Diretoria agora pode criar acordos também (decisão Erick 13/05/2026)
     # Os 3 perfis (ADMIN, DIRETORIA, COBRANCA) podem usar o wizard.
 
@@ -1141,35 +1143,41 @@ def _passo_7_confirmar(usuario):
             use_container_width=True,
             key="wizard_proposta_btn",
         ):
-            from src.servicos.exportador_pdf import gerar_pdf_proposta_acordo
-            from src.utils.formatadores import slugificar
-            from datetime import datetime as _dt
+            with st.spinner("⏳ Processando..."):
+                try:
+                    from src.servicos.exportador_pdf import gerar_pdf_proposta_acordo
+                    from src.utils.formatadores import slugificar
+                    from datetime import datetime as _dt
 
-            # Monta as parcelas como objetos simples pra alimentar o PDF
-            class _ParcelaSimples:
-                pass
-            parcelas_pdf = []
-            for p_dict in estado["parcelas_calculadas"]:
-                p = _ParcelaSimples()
-                p.numero = p_dict["numero"]
-                p.vencimento_atual = date.fromisoformat(p_dict["vencimento_atual"]) if isinstance(p_dict["vencimento_atual"], str) else p_dict["vencimento_atual"]
-                p.valor_original = p_dict["valor_original"]
-                parcelas_pdf.append(p)
+                    # Monta as parcelas como objetos simples pra alimentar o PDF
+                    class _ParcelaSimples:
+                        pass
+                    parcelas_pdf = []
+                    for p_dict in estado["parcelas_calculadas"]:
+                        p = _ParcelaSimples()
+                        p.numero = p_dict["numero"]
+                        p.vencimento_atual = date.fromisoformat(p_dict["vencimento_atual"]) if isinstance(p_dict["vencimento_atual"], str) else p_dict["vencimento_atual"]
+                        p.valor_original = p_dict["valor_original"]
+                        parcelas_pdf.append(p)
 
-            pdf_bytes = gerar_pdf_proposta_acordo(
-                cliente_nome=estado["cliente_nome"],
-                cliente_cnpj=estado.get("cliente_cnpj") or None,
-                cliente_endereco=None,
-                cliente_bairro=None,
-                cliente_cidade=None,
-                cliente_uf=None,
-                parcelas=parcelas_pdf,
-            )
-            st.session_state["wizard_proposta_pdf"] = pdf_bytes
-            st.session_state["wizard_proposta_nome"] = (
-                f"PropostaAcordo_{slugificar(estado['cliente_nome'])}_"
-                f"{_dt.now().strftime('%Y%m%d')}.pdf"
-            )
+                    pdf_bytes = gerar_pdf_proposta_acordo(
+                        cliente_nome=estado["cliente_nome"],
+                        cliente_cnpj=estado.get("cliente_cnpj") or None,
+                        cliente_endereco=None,
+                        cliente_bairro=None,
+                        cliente_cidade=None,
+                        cliente_uf=None,
+                        parcelas=parcelas_pdf,
+                    )
+                    st.session_state["wizard_proposta_pdf"] = pdf_bytes
+                    st.session_state["wizard_proposta_nome"] = (
+                        f"PropostaAcordo_{slugificar(estado['cliente_nome'])}_"
+                        f"{_dt.now().strftime('%Y%m%d')}.pdf"
+                    )
+                except Exception as _e_acao:
+                    st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                    with st.expander("🔍 Detalhes técnicos", expanded=False):
+                        st.exception(_e_acao)
 
     if "wizard_proposta_pdf" in st.session_state:
         col_dl, _ = st.columns([2, 3])

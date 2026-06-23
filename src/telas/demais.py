@@ -12,6 +12,7 @@ import streamlit as st
 
 from src.banco import repo_acordo, repo_usuario, repos_auxiliares
 from src.modelos.tipos import PerfilUsuario, StatusAcordo
+from src.utils.feedback import drenar_mensagens
 from src.utils.estilo import badge_status_acordo
 from src.utils.formatadores import formatar_brl, formatar_data, normalizar_busca
 from src.utils.marca import AZUL_ESCURO, AMARELO, VERDE
@@ -23,6 +24,7 @@ from src.utils.traducoes import traduzir_acao, traduzir_perfil, traduzir_status_
 # ============================================================
 
 def renderizar_finalizados(usuario):
+    drenar_mensagens()
     st.markdown(f"<h1 style='color:{AZUL_ESCURO}'>📁 Acordos Finalizados</h1>", unsafe_allow_html=True)
 
     finalizados = repo_acordo.listar_resumos(
@@ -157,17 +159,23 @@ def renderizar_negociadores(usuario):
                         "✅ Aprovar", key=f"apr_{u.id}",
                         type="primary", use_container_width=True,
                     ):
-                        repo_usuario.aprovar_usuario(u.id)
-                        repos_auxiliares.registrar_log(
-                            usuario_id=usuario.id, usuario_nome=usuario.nome,
-                            acao="APROVAR_USUARIO", entidade="usuario",
-                            entidade_id=u.id,
-                            contexto=u.nome,
-                            antes={"aprovado": False},
-                            depois={"aprovado": True},
-                        )
-                        st.success(f"✅ {u.nome.split()[0]} aprovado!")
-                        st.rerun()
+                        with st.spinner("⏳ Processando..."):
+                            try:
+                                repo_usuario.aprovar_usuario(u.id)
+                                repos_auxiliares.registrar_log(
+                                    usuario_id=usuario.id, usuario_nome=usuario.nome,
+                                    acao="APROVAR_USUARIO", entidade="usuario",
+                                    entidade_id=u.id,
+                                    contexto=u.nome,
+                                    antes={"aprovado": False},
+                                    depois={"aprovado": True},
+                                )
+                                st.success(f"✅ {u.nome.split()[0]} aprovado!")
+                                st.rerun()
+                            except Exception as _e_acao:
+                                st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                                with st.expander("🔍 Detalhes técnicos", expanded=False):
+                                    st.exception(_e_acao)
                 with col_r:
                     if st.button(
                         "❌ Recusar", key=f"rec_{u.id}",
@@ -188,13 +196,19 @@ def renderizar_negociadores(usuario):
                             "Inativar", key=f"inat_{u.id}",
                             use_container_width=True,
                         ):
-                            repo_usuario.inativar_usuario(u.id)
-                            repos_auxiliares.registrar_log(
-                                usuario_id=usuario.id, usuario_nome=usuario.nome,
-                                acao="INATIVAR_USUARIO", entidade="usuario",
-                                entidade_id=u.id, contexto=u.nome,
-                            )
-                            st.rerun()
+                            with st.spinner("⏳ Processando..."):
+                                try:
+                                    repo_usuario.inativar_usuario(u.id)
+                                    repos_auxiliares.registrar_log(
+                                        usuario_id=usuario.id, usuario_nome=usuario.nome,
+                                        acao="INATIVAR_USUARIO", entidade="usuario",
+                                        entidade_id=u.id, contexto=u.nome,
+                                    )
+                                    st.rerun()
+                                except Exception as _e_acao:
+                                    st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                                    with st.expander("🔍 Detalhes técnicos", expanded=False):
+                                        st.exception(_e_acao)
                 with col_c:
                     if u.id != usuario.id:
                         if st.button(
@@ -202,13 +216,19 @@ def renderizar_negociadores(usuario):
                             use_container_width=True,
                             help="Volta usuário pra status pendente",
                         ):
-                            repo_usuario.revogar_aprovacao(u.id)
-                            repos_auxiliares.registrar_log(
-                                usuario_id=usuario.id, usuario_nome=usuario.nome,
-                                acao="REVOGAR_APROVACAO", entidade="usuario",
-                                entidade_id=u.id, contexto=u.nome,
-                            )
-                            st.rerun()
+                            with st.spinner("⏳ Processando..."):
+                                try:
+                                    repo_usuario.revogar_aprovacao(u.id)
+                                    repos_auxiliares.registrar_log(
+                                        usuario_id=usuario.id, usuario_nome=usuario.nome,
+                                        acao="REVOGAR_APROVACAO", entidade="usuario",
+                                        entidade_id=u.id, contexto=u.nome,
+                                    )
+                                    st.rerun()
+                                except Exception as _e_acao:
+                                    st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                                    with st.expander("🔍 Detalhes técnicos", expanded=False):
+                                        st.exception(_e_acao)
                 # 2ª linha
                 col_d, col_e, col_f = st.columns(3)
                 with col_d:
@@ -239,13 +259,19 @@ def renderizar_negociadores(usuario):
                     "🔄 Reativar", key=f"react_{u.id}",
                     use_container_width=True,
                 ):
-                    repo_usuario.reativar_usuario(u.id)
-                    repos_auxiliares.registrar_log(
-                        usuario_id=usuario.id, usuario_nome=usuario.nome,
-                        acao="REATIVAR_USUARIO", entidade="usuario",
-                        entidade_id=u.id, contexto=u.nome,
-                    )
-                    st.rerun()
+                    with st.spinner("⏳ Processando..."):
+                        try:
+                            repo_usuario.reativar_usuario(u.id)
+                            repos_auxiliares.registrar_log(
+                                usuario_id=usuario.id, usuario_nome=usuario.nome,
+                                acao="REATIVAR_USUARIO", entidade="usuario",
+                                entidade_id=u.id, contexto=u.nome,
+                            )
+                            st.rerun()
+                        except Exception as _e_acao:
+                            st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                            with st.expander("🔍 Detalhes técnicos", expanded=False):
+                                st.exception(_e_acao)
 
         # ============ Formulário de alterar CARGO/PERFIL ============
         if st.session_state.get(f"edit_perfil_form_{u.id}"):
@@ -451,14 +477,20 @@ def renderizar_negociadores(usuario):
             col_sim, col_nao, _ = st.columns([1, 1, 4])
             with col_sim:
                 if st.button("Sim, recusar", type="primary", key=f"sim_rec_{u.id}"):
-                    repo_usuario.recusar_usuario(u.id)
-                    repos_auxiliares.registrar_log(
-                        usuario_id=usuario.id, usuario_nome=usuario.nome,
-                        acao="RECUSAR_USUARIO", entidade="usuario",
-                        entidade_id=u.id, contexto=u.nome,
-                    )
-                    del st.session_state[f"conf_recusar_{u.id}"]
-                    st.rerun()
+                    with st.spinner("⏳ Processando..."):
+                        try:
+                            repo_usuario.recusar_usuario(u.id)
+                            repos_auxiliares.registrar_log(
+                                usuario_id=usuario.id, usuario_nome=usuario.nome,
+                                acao="RECUSAR_USUARIO", entidade="usuario",
+                                entidade_id=u.id, contexto=u.nome,
+                            )
+                            del st.session_state[f"conf_recusar_{u.id}"]
+                            st.rerun()
+                        except Exception as _e_acao:
+                            st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                            with st.expander("🔍 Detalhes técnicos", expanded=False):
+                                st.exception(_e_acao)
             with col_nao:
                 if st.button("Cancelar", key=f"nao_rec_{u.id}"):
                     del st.session_state[f"conf_recusar_{u.id}"]
@@ -862,35 +894,36 @@ def renderizar_aprovacoes(usuario):
                     col_o, col_x = st.columns(2)
                     with col_o:
                         if st.form_submit_button("✓ Confirmar", type="primary", use_container_width=True):
-                            try:
-                                aprovado = (acao == "aprovar")
-                                repos_auxiliares.revisar_aprovacao(
-                                    aprovacao_id=ap["id"], revisor_id=usuario.id,
-                                    aprovado=aprovado, justificativa=just,
-                                )
-                                # Muda status do acordo
-                                from src.banco.repo_acordo import atualizar_status
-                                novo = StatusAcordo.ATIVO if aprovado else StatusAcordo.CANCELADO
-                                atualizar_status(ap["acordo_id"], novo)
-                                repos_auxiliares.registrar_log(
-                                    usuario_id=usuario.id, usuario_nome=usuario.nome,
-                                    acao=f"APROVACAO_{novo.value}",
-                                    entidade="acordo", entidade_id=ap["acordo_id"],
-                                    contexto=ap["numero_interno"],
-                                    depois={"justificativa": just, "novo_status": novo.value},
-                                )
-                                del st.session_state[f"rev_apr_{ap['id']}"]
-                                # Persiste mensagem pro próximo rerun
-                                acao_txt = "aprovado" if aprovado else "recusado"
-                                st.session_state["aprovacoes_msg"] = (
-                                    "sucesso",
-                                    f"✅ Acordo {ap['numero_interno']} {acao_txt} com sucesso!"
-                                )
-                                st.toast(f"✅ Acordo {acao_txt}!", icon="✅")
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"❌ Erro ao processar: {e}")
-                                st.exception(e)
+                            with st.spinner("⏳ Processando..."):
+                                try:
+                                    aprovado = (acao == "aprovar")
+                                    repos_auxiliares.revisar_aprovacao(
+                                        aprovacao_id=ap["id"], revisor_id=usuario.id,
+                                        aprovado=aprovado, justificativa=just,
+                                    )
+                                    # Muda status do acordo
+                                    from src.banco.repo_acordo import atualizar_status
+                                    novo = StatusAcordo.ATIVO if aprovado else StatusAcordo.CANCELADO
+                                    atualizar_status(ap["acordo_id"], novo)
+                                    repos_auxiliares.registrar_log(
+                                        usuario_id=usuario.id, usuario_nome=usuario.nome,
+                                        acao=f"APROVACAO_{novo.value}",
+                                        entidade="acordo", entidade_id=ap["acordo_id"],
+                                        contexto=ap["numero_interno"],
+                                        depois={"justificativa": just, "novo_status": novo.value},
+                                    )
+                                    del st.session_state[f"rev_apr_{ap['id']}"]
+                                    # Persiste mensagem pro próximo rerun
+                                    acao_txt = "aprovado" if aprovado else "recusado"
+                                    st.session_state["aprovacoes_msg"] = (
+                                        "sucesso",
+                                        f"✅ Acordo {ap['numero_interno']} {acao_txt} com sucesso!"
+                                    )
+                                    st.toast(f"✅ Acordo {acao_txt}!", icon="✅")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"❌ Erro ao processar: {e}")
+                                    st.exception(e)
                     with col_x:
                         if st.form_submit_button("Cancelar", use_container_width=True):
                             del st.session_state[f"rev_apr_{ap['id']}"]

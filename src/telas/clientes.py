@@ -10,12 +10,14 @@ from __future__ import annotations
 import streamlit as st
 
 from src.banco import repo_cliente, repo_extras, repos_auxiliares
+from src.utils.feedback import drenar_mensagens
 from src.utils.formatadores import formatar_brl, formatar_data, normalizar_busca
 from src.utils.marca import AZUL_ESCURO, AMARELO, VERDE
 from src.utils.estilo import badge_status_acordo
 
 
 def renderizar_clientes(usuario):
+    drenar_mensagens()
     # Detecta se já está vendo histórico de um cliente específico
     cliente_id_aberto = st.session_state.get("cliente_aberto_id")
     if cliente_id_aberto:
@@ -207,45 +209,51 @@ def _tela_historico_cliente(cliente_id: int, usuario):
             help="Cria um novo acordo já com os dados deste cliente preenchidos",
             key="btn_novo_acordo_cliente",
         ):
-            st.session_state["novo_acordo_cliente_preset"] = {
-                "cliente_id": cliente.id,
-                "cliente_nome": cliente.nome_principal,
-                "cliente_cnpj": cliente.cnpj or "",
-                "cliente_contato": cliente.contato or "",
-                "cliente_email": cliente.email_cobranca or "",
-                "cliente_telefone": cliente.telefone or "",
-                "cliente_tem_whatsapp": bool(cliente.tem_whatsapp),
-            }
+            with st.spinner("⏳ Processando..."):
+                try:
+                    st.session_state["novo_acordo_cliente_preset"] = {
+                        "cliente_id": cliente.id,
+                        "cliente_nome": cliente.nome_principal,
+                        "cliente_cnpj": cliente.cnpj or "",
+                        "cliente_contato": cliente.contato or "",
+                        "cliente_email": cliente.email_cobranca or "",
+                        "cliente_telefone": cliente.telefone or "",
+                        "cliente_tem_whatsapp": bool(cliente.tem_whatsapp),
+                    }
 
-            # Pré-carrega os títulos avulsos em aberto do cliente
-            titulos = repo_portal.buscar_titulos_disponiveis(cliente.id)
-            if titulos:
-                boletos_pre = []
-                for t in titulos:
-                    boletos_pre.append({
-                        "codigo_parceiro": t.get("codigo_parceiro", 0) or 0,
-                        "razao_social_parceiro": t.get("razao_social_parceiro", "") or "",
-                        "empresa": t.get("empresa", 1) or 1,
-                        "codigo_vendedor": t.get("codigo_vendedor", 0) or 0,
-                        "nome_vendedor": t.get("nome_vendedor", "") or "",
-                        "vencimento": t.get("vencimento", "") or "",
-                        "numero_nota": t.get("numero_nota", "") or "",
-                        "numero_unico": t.get("numero_unico", 0) or 0,
-                        "principal": float(t.get("principal", 0) or 0),
-                        "dias_atraso": 0,
-                        "fim_juros": "",
-                        "juros": 0.0,
-                        "multa": 0.0,
-                        "total": float(t.get("principal", 0) or 0),
-                        "parcelas_alocadas": [],
-                        "distribuicao": [],
-                        "origem": "MANUAL",
-                    })
-                if boletos_pre:
-                    st.session_state["pre_titulos_cliente"] = boletos_pre
+                    # Pré-carrega os títulos avulsos em aberto do cliente
+                    titulos = repo_portal.buscar_titulos_disponiveis(cliente.id)
+                    if titulos:
+                        boletos_pre = []
+                        for t in titulos:
+                            boletos_pre.append({
+                                "codigo_parceiro": t.get("codigo_parceiro", 0) or 0,
+                                "razao_social_parceiro": t.get("razao_social_parceiro", "") or "",
+                                "empresa": t.get("empresa", 1) or 1,
+                                "codigo_vendedor": t.get("codigo_vendedor", 0) or 0,
+                                "nome_vendedor": t.get("nome_vendedor", "") or "",
+                                "vencimento": t.get("vencimento", "") or "",
+                                "numero_nota": t.get("numero_nota", "") or "",
+                                "numero_unico": t.get("numero_unico", 0) or 0,
+                                "principal": float(t.get("principal", 0) or 0),
+                                "dias_atraso": 0,
+                                "fim_juros": "",
+                                "juros": 0.0,
+                                "multa": 0.0,
+                                "total": float(t.get("principal", 0) or 0),
+                                "parcelas_alocadas": [],
+                                "distribuicao": [],
+                                "origem": "MANUAL",
+                            })
+                        if boletos_pre:
+                            st.session_state["pre_titulos_cliente"] = boletos_pre
 
-            del st.session_state["cliente_aberto_id"]
-            st.switch_page("pages/2_➕_Novo_Acordo.py")
+                    del st.session_state["cliente_aberto_id"]
+                    st.switch_page("pages/2_➕_Novo_Acordo.py")
+                except Exception as _e_acao:
+                    st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                    with st.expander("🔍 Detalhes técnicos", expanded=False):
+                        st.exception(_e_acao)
     with col_titulos:
         if st.button(
             "📥 Cadastrar títulos",
@@ -686,55 +694,56 @@ def _modal_cadastrar_titulos(cliente, usuario):
                 f"✅ Confirmar cadastro de {len(res.boletos)} título(s)",
                 type="primary", use_container_width=True,
             ):
-                qtd_ok = 0
-                qtd_duplicado = 0
-                erros_outros = []
-                for b in res.boletos:
-                    try:
-                        repo_portal.cadastrar_titulo_avulso(
-                            cliente_id=cliente.id,
-                            codigo_parceiro=b.codigo_parceiro,
-                            razao_social_parceiro=b.razao_social_parceiro,
-                            empresa=int(b.empresa),
-                            codigo_vendedor=b.codigo_vendedor,
-                            nome_vendedor=b.nome_vendedor,
-                            vencimento=b.vencimento.isoformat(),
-                            numero_nota=b.numero_nota,
-                            numero_unico=b.numero_unico,
-                            principal=b.principal,
-                            cadastrado_por_id=usuario.id,
+                with st.spinner("⏳ Processando..."):
+                    qtd_ok = 0
+                    qtd_duplicado = 0
+                    erros_outros = []
+                    for b in res.boletos:
+                        try:
+                            repo_portal.cadastrar_titulo_avulso(
+                                cliente_id=cliente.id,
+                                codigo_parceiro=b.codigo_parceiro,
+                                razao_social_parceiro=b.razao_social_parceiro,
+                                empresa=int(b.empresa),
+                                codigo_vendedor=b.codigo_vendedor,
+                                nome_vendedor=b.nome_vendedor,
+                                vencimento=b.vencimento.isoformat(),
+                                numero_nota=b.numero_nota,
+                                numero_unico=b.numero_unico,
+                                principal=b.principal,
+                                cadastrado_por_id=usuario.id,
+                            )
+                            qtd_ok += 1
+                        except Exception as e:
+                            msg = str(e).lower()
+                            # Só silencia se for duplicidade conhecida
+                            if "unique" in msg or "duplicate" in msg or "duplicat" in msg or "numero_unico" in msg:
+                                qtd_duplicado += 1
+                            else:
+                                erros_outros.append(f"{b.numero_unico}: {str(e)[:200]}")
+                            continue
+
+                    if qtd_ok > 0:
+                        st.success(
+                            f"✓ {qtd_ok} título(s) cadastrado(s) com sucesso."
+                            + (f" ({qtd_duplicado} duplicado(s) ignorado(s))" if qtd_duplicado else "")
                         )
-                        qtd_ok += 1
-                    except Exception as e:
-                        msg = str(e).lower()
-                        # Só silencia se for duplicidade conhecida
-                        if "unique" in msg or "duplicate" in msg or "duplicat" in msg or "numero_unico" in msg:
-                            qtd_duplicado += 1
-                        else:
-                            erros_outros.append(f"{b.numero_unico}: {str(e)[:200]}")
-                        continue
+                    else:
+                        st.error(
+                            f"⛔ Nenhum título cadastrado. "
+                            f"{qtd_duplicado} duplicado(s) e {len(erros_outros)} erro(s)."
+                        )
 
-                if qtd_ok > 0:
-                    st.success(
-                        f"✓ {qtd_ok} título(s) cadastrado(s) com sucesso."
-                        + (f" ({qtd_duplicado} duplicado(s) ignorado(s))" if qtd_duplicado else "")
-                    )
-                else:
-                    st.error(
-                        f"⛔ Nenhum título cadastrado. "
-                        f"{qtd_duplicado} duplicado(s) e {len(erros_outros)} erro(s)."
-                    )
+                    # Mostra erros não-duplicidade pro Erick poder me reportar
+                    if erros_outros:
+                        with st.expander(f"⚠ Ver {len(erros_outros)} erro(s) técnico(s)"):
+                            for err in erros_outros[:10]:
+                                st.code(err)
 
-                # Mostra erros não-duplicidade pro Erick poder me reportar
-                if erros_outros:
-                    with st.expander(f"⚠ Ver {len(erros_outros)} erro(s) técnico(s)"):
-                        for err in erros_outros[:10]:
-                            st.code(err)
-
-                # Só fecha se cadastrou pelo menos 1
-                if qtd_ok > 0:
-                    del st.session_state["cliente_modal_cadastrar_titulos"]
-                    st.rerun()
+                    # Só fecha se cadastrou pelo menos 1
+                    if qtd_ok > 0:
+                        del st.session_state["cliente_modal_cadastrar_titulos"]
+                        st.rerun()
 
     # Lista de títulos já cadastrados
     st.markdown("<hr>", unsafe_allow_html=True)
@@ -763,12 +772,13 @@ def _modal_cadastrar_titulos(cliente, usuario):
                 )
             with col_acao:
                 if st.button("🗑", key=f"del_tit_{t['id']}", help="Remover"):
-                    try:
-                        repo_portal.remover_titulo_avulso(t['id'])
-                        st.toast("✅ Título removido", icon="✅")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ Erro ao remover: {e}")
+                    with st.spinner("⏳ Processando..."):
+                        try:
+                            repo_portal.remover_titulo_avulso(t['id'])
+                            st.toast("✅ Título removido", icon="✅")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Erro ao remover: {e}")
 
 
 def _modal_gerar_link_portal(cliente, usuario):
@@ -849,14 +859,15 @@ def _modal_gerar_link_portal(cliente, usuario):
             f"Hoje já foram gerados {qtd_hoje} link(s) pra este cliente."
         )
         if st.button("🔗 Gerar novo link", type="primary", use_container_width=True):
-            try:
-                token = repo_portal.gerar_token(cliente.id, usuario.id, dias_validade=30)
-                st.session_state["portal_token_recem_gerado"] = token
-                st.toast("✅ Link gerado!", icon="✅")
-                st.rerun()
-            except Exception as e:
-                st.error(f"❌ Erro ao gerar link: {e}")
-                st.exception(e)
+            with st.spinner("⏳ Processando..."):
+                try:
+                    token = repo_portal.gerar_token(cliente.id, usuario.id, dias_validade=30)
+                    st.session_state["portal_token_recem_gerado"] = token
+                    st.toast("✅ Link gerado!", icon="✅")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Erro ao gerar link: {e}")
+                    st.exception(e)
     else:
         # Diretoria / Cobrança: limite de 3/dia
         qtd_restantes = LIMITE_DIARIO - qtd_hoje
@@ -872,14 +883,15 @@ def _modal_gerar_link_portal(cliente, usuario):
                 f"para este cliente (limite diário: {LIMITE_DIARIO})."
             )
             if st.button("🔗 Gerar novo link", type="primary", use_container_width=True):
-                try:
-                    token = repo_portal.gerar_token(cliente.id, usuario.id, dias_validade=30)
-                    st.session_state["portal_token_recem_gerado"] = token
-                    st.toast("✅ Link gerado!", icon="✅")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"❌ Erro ao gerar link: {e}")
-                    st.exception(e)
+                with st.spinner("⏳ Processando..."):
+                    try:
+                        token = repo_portal.gerar_token(cliente.id, usuario.id, dias_validade=30)
+                        st.session_state["portal_token_recem_gerado"] = token
+                        st.toast("✅ Link gerado!", icon="✅")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Erro ao gerar link: {e}")
+                        st.exception(e)
 
     # Mostrar token recém-gerado
     if st.session_state.get("portal_token_recem_gerado"):
@@ -1054,22 +1066,23 @@ def _bloco_anexos_cliente(cliente, usuario):
                     use_container_width=True,
                     key=f"anx_btn_send_{cliente.id}",
                 ):
-                    try:
-                        conteudo = arq.getvalue()
-                        repo_anexos.adicionar_anexo(
-                            cliente_id=cliente.id,
-                            nome_arquivo=arq.name,
-                            conteudo_bytes=conteudo,
-                            upload_por_id=usuario.id,
-                            descricao=descricao if descricao else None,
-                            mime_type=arq.type or "application/pdf",
-                        )
-                        st.success(f"✓ {arq.name} anexado.")
-                        st.rerun()
-                    except ValueError as e:
-                        st.error(f"⛔ {str(e)}")
-                    except Exception as e:
-                        st.error(f"⛔ Erro: {str(e)[:200]}")
+                    with st.spinner("⏳ Processando..."):
+                        try:
+                            conteudo = arq.getvalue()
+                            repo_anexos.adicionar_anexo(
+                                cliente_id=cliente.id,
+                                nome_arquivo=arq.name,
+                                conteudo_bytes=conteudo,
+                                upload_por_id=usuario.id,
+                                descricao=descricao if descricao else None,
+                                mime_type=arq.type or "application/pdf",
+                            )
+                            st.success(f"✓ {arq.name} anexado.")
+                            st.rerun()
+                        except ValueError as e:
+                            st.error(f"⛔ {str(e)}")
+                        except Exception as e:
+                            st.error(f"⛔ Erro: {str(e)[:200]}")
 
         if anexos:
             st.markdown("<hr style='margin:8px 0;'>", unsafe_allow_html=True)
@@ -1119,8 +1132,14 @@ def _bloco_anexos_cliente(cliente, usuario):
                                 use_container_width=True,
                                 help="Remover (só admin)",
                             ):
-                                repo_anexos.remover_anexo(a["id"])
-                                st.rerun()
+                                with st.spinner("⏳ Processando..."):
+                                    try:
+                                        repo_anexos.remover_anexo(a["id"])
+                                        st.rerun()
+                                    except Exception as _e_acao:
+                                        st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                                        with st.expander("🔍 Detalhes técnicos", expanded=False):
+                                            st.exception(_e_acao)
                 st.markdown(
                     "<hr style='margin:4px 0; border-color:#EEE;'>",
                     unsafe_allow_html=True,

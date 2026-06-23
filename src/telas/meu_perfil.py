@@ -13,11 +13,13 @@ import streamlit as st
 
 from src.banco import repo_usuario, repos_auxiliares
 from src.modelos.tipos import PerfilUsuario
+from src.utils.feedback import drenar_mensagens
 from src.utils.formatadores import formatar_data
 from src.utils.marca import AZUL_ESCURO, AMARELO
 
 
 def renderizar_meu_perfil(usuario):
+    drenar_mensagens()
     st.markdown(
         f"<h1 style='color:{AZUL_ESCURO}'>👤 Meu Perfil</h1>",
         unsafe_allow_html=True,

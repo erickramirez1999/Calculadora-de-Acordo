@@ -32,6 +32,7 @@ from src.servicos.leitor_xlsx import (
     importar_xlsx_titulos,
     montar_relatorio_importacao,
 )
+from src.utils.feedback import drenar_mensagens
 from src.utils.formatadores import formatar_brl, formatar_data
 from src.utils.marca import AZUL_ESCURO
 
@@ -76,6 +77,7 @@ def _mostrar_feedback_upload(res):
 
 
 def renderizar_calculadora(usuario):
+    drenar_mensagens()
     st.markdown(
         f"<h1 style='color:{AZUL_ESCURO}'>🧮 Calculadora</h1>",
         unsafe_allow_html=True,
@@ -509,30 +511,36 @@ def _aba_simulacao_acordo(usuario):
             use_container_width=True,
             key="sim_proposta_btn",
         ):
-            from src.servicos.exportador_pdf import gerar_pdf_proposta_acordo
-            from src.utils.formatadores import slugificar
-            from datetime import datetime
+            with st.spinner("⏳ Processando..."):
+                try:
+                    from src.servicos.exportador_pdf import gerar_pdf_proposta_acordo
+                    from src.utils.formatadores import slugificar
+                    from datetime import datetime
 
-            # Pega o cliente do primeiro boleto (se disponível) — proposta
-            # serve pra mostrar a simulação antes mesmo de cadastrar
-            cliente_nome = "CLIENTE A SER DEFINIDO"
-            if boletos:
-                cliente_nome = boletos[0].razao_social_parceiro
+                    # Pega o cliente do primeiro boleto (se disponível) — proposta
+                    # serve pra mostrar a simulação antes mesmo de cadastrar
+                    cliente_nome = "CLIENTE A SER DEFINIDO"
+                    if boletos:
+                        cliente_nome = boletos[0].razao_social_parceiro
 
-            pdf_bytes = gerar_pdf_proposta_acordo(
-                cliente_nome=cliente_nome,
-                cliente_cnpj=None,
-                cliente_endereco=None,
-                cliente_bairro=None,
-                cliente_cidade=None,
-                cliente_uf=None,
-                parcelas=parcelas_sim,
-            )
-            st.session_state["sim_proposta_pdf"] = pdf_bytes
-            st.session_state["sim_proposta_nome"] = (
-                f"PropostaAcordo_{slugificar(cliente_nome)}_"
-                f"{datetime.now().strftime('%Y%m%d')}.pdf"
-            )
+                    pdf_bytes = gerar_pdf_proposta_acordo(
+                        cliente_nome=cliente_nome,
+                        cliente_cnpj=None,
+                        cliente_endereco=None,
+                        cliente_bairro=None,
+                        cliente_cidade=None,
+                        cliente_uf=None,
+                        parcelas=parcelas_sim,
+                    )
+                    st.session_state["sim_proposta_pdf"] = pdf_bytes
+                    st.session_state["sim_proposta_nome"] = (
+                        f"PropostaAcordo_{slugificar(cliente_nome)}_"
+                        f"{datetime.now().strftime('%Y%m%d')}.pdf"
+                    )
+                except Exception as _e_acao:
+                    st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                    with st.expander("🔍 Detalhes técnicos", expanded=False):
+                        st.exception(_e_acao)
 
     if "sim_proposta_pdf" in st.session_state:
         col_dl, _ = st.columns([2, 3])

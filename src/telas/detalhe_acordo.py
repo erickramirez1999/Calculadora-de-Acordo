@@ -18,6 +18,7 @@ from src.modelos.tipos import (
 )
 from src.servicos.juros import calcular_valor_atualizado_parcela
 from src.utils.estilo import badge_status_acordo, barra_progresso
+from src.utils.feedback import drenar_mensagens, enfileirar, executar_acao
 from src.utils.formatadores import (
     formatar_brl, formatar_data, formatar_hora, normalizar_busca,
 )
@@ -30,7 +31,11 @@ def renderizar_detalhe(usuario, acordo_id: int):
         st.error("Acordo não encontrado.")
         return
 
-    # Mensagem persistente de ações anteriores (reabrir/quitar/etc)
+    # Drena mensagens (sucesso/erro/aviso) enfileiradas no rerun anterior.
+    # Centralizado em utils/feedback.py — funciona pra TODAS as ações.
+    drenar_mensagens()
+
+    # Compat: mensagens antigas que ainda usam a chave detalhe_acordo_msg
     msg = st.session_state.pop("detalhe_acordo_msg", None)
     if msg:
         tipo, texto = msg
@@ -157,25 +162,26 @@ Cobrança: <b>{acordo.tipo_cobranca.value}</b>
                 cc1, cc2, _ = st.columns([1, 1, 4])
                 with cc1:
                     if st.button("✓ Confirmar reabertura", type="primary", key=f"sim_reab_{acordo.id}"):
-                        try:
-                            from src.banco.repo_acordo import atualizar_status
-                            atualizar_status(acordo.id, StatusAcordo.ATIVO)
-                            repos_auxiliares.registrar_log(
-                                usuario_id=usuario.id, usuario_nome=usuario.nome,
-                                acao="REABRIR_ACORDO", entidade="acordo",
-                                entidade_id=acordo.id,
-                                contexto=f"{acordo.numero_interno}",
-                                antes={"status": acordo.status.value},
-                                depois={"status": "ATIVO"},
-                            )
-                            del st.session_state[f"confirmar_reabrir_{acordo.id}"]
-                            st.session_state["detalhe_acordo_msg"] = (
-                                "sucesso", f"✅ Acordo {acordo.numero_interno} reaberto com sucesso!"
-                            )
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ Erro ao reabrir acordo: {e}")
-                            st.exception(e)
+                        with st.spinner("⏳ Processando..."):
+                            try:
+                                from src.banco.repo_acordo import atualizar_status
+                                atualizar_status(acordo.id, StatusAcordo.ATIVO)
+                                repos_auxiliares.registrar_log(
+                                    usuario_id=usuario.id, usuario_nome=usuario.nome,
+                                    acao="REABRIR_ACORDO", entidade="acordo",
+                                    entidade_id=acordo.id,
+                                    contexto=f"{acordo.numero_interno}",
+                                    antes={"status": acordo.status.value},
+                                    depois={"status": "ATIVO"},
+                                )
+                                del st.session_state[f"confirmar_reabrir_{acordo.id}"]
+                                st.session_state["detalhe_acordo_msg"] = (
+                                    "sucesso", f"✅ Acordo {acordo.numero_interno} reaberto com sucesso!"
+                                )
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ Erro ao reabrir acordo: {e}")
+                                st.exception(e)
                 with cc2:
                     if st.button("Cancelar", key=f"nao_reab_{acordo.id}"):
                         del st.session_state[f"confirmar_reabrir_{acordo.id}"]
@@ -331,29 +337,35 @@ def _linha_parcela(acordo, parcela, usuario, modo_leitura: bool, hoje: date):
                                     key=f"estornar_quit_{pag['id']}_{acordo.id}",
                                     use_container_width=True,
                                 ):
-                                    repo_acordo.estornar_pagamento(pag["id"])
-                                    repos_auxiliares.registrar_log(
-                                        usuario_id=usuario.id, usuario_nome=usuario.nome,
-                                        acao="ESTORNAR_PAGAMENTO",
-                                        entidade="parcela", entidade_id=parcela_id,
-                                        contexto=f"{acordo.numero_interno} · Parcela {parcela.numero}",
-                                        antes={"valor_estornado": pag["valor"]},
-                                    )
-                                    # Se o acordo estava QUITADO, reabre pra ATIVO
-                                    if acordo.status == StatusAcordo.QUITADO:
-                                        repo_acordo.alterar_status(
-                                            acordo.id, StatusAcordo.ATIVO,
-                                        )
-                                        repos_auxiliares.registrar_log(
-                                            usuario_id=usuario.id, usuario_nome=usuario.nome,
-                                            acao="REABRIR_AUTO", entidade="acordo",
-                                            entidade_id=acordo.id,
-                                            contexto=acordo.numero_interno,
-                                            antes={"status": "QUITADO"},
-                                            depois={"status": "ATIVO"},
-                                        )
-                                    st.success("✓ Pagamento estornado!")
-                                    st.rerun()
+                                    with st.spinner("⏳ Processando..."):
+                                        try:
+                                            repo_acordo.estornar_pagamento(pag["id"])
+                                            repos_auxiliares.registrar_log(
+                                                usuario_id=usuario.id, usuario_nome=usuario.nome,
+                                                acao="ESTORNAR_PAGAMENTO",
+                                                entidade="parcela", entidade_id=parcela_id,
+                                                contexto=f"{acordo.numero_interno} · Parcela {parcela.numero}",
+                                                antes={"valor_estornado": pag["valor"]},
+                                            )
+                                            # Se o acordo estava QUITADO, reabre pra ATIVO
+                                            if acordo.status == StatusAcordo.QUITADO:
+                                                repo_acordo.alterar_status(
+                                                    acordo.id, StatusAcordo.ATIVO,
+                                                )
+                                                repos_auxiliares.registrar_log(
+                                                    usuario_id=usuario.id, usuario_nome=usuario.nome,
+                                                    acao="REABRIR_AUTO", entidade="acordo",
+                                                    entidade_id=acordo.id,
+                                                    contexto=acordo.numero_interno,
+                                                    antes={"status": "QUITADO"},
+                                                    depois={"status": "ATIVO"},
+                                                )
+                                            st.success("✓ Pagamento estornado!")
+                                            st.rerun()
+                                        except Exception as _e_acao:
+                                            st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                                            with st.expander("🔍 Detalhes técnicos", expanded=False):
+                                                st.exception(_e_acao)
 
         if not modo_leitura and parcela.status != StatusParcela.QUITADA:
             eh_admin = usuario.perfil == PerfilUsuario.ADMIN
@@ -374,19 +386,25 @@ def _linha_parcela(acordo, parcela, usuario, modo_leitura: bool, hoje: date):
                                 key=f"conf_adm_{parcela.numero}_{acordo.id}",
                                 type="primary", use_container_width=True,
                             ):
-                                repo_acordo.confirmar_pagamento_admin(
-                                    pag["id"], usuario.id,
-                                )
-                                repos_auxiliares.registrar_log(
-                                    usuario_id=usuario.id, usuario_nome=usuario.nome,
-                                    acao="CONFIRMAR_PAGAMENTO_ADMIN", entidade="parcela",
-                                    entidade_id=parcela_id,
-                                    contexto=f"{acordo.numero_interno} · Parcela {parcela.numero}",
-                                    depois={"valor": pag["valor"], "data": pag["data_pagamento"]},
-                                )
-                                _verificar_quitacao_acordo(acordo, usuario)
-                                st.success("✅ Pagamento confirmado!")
-                                st.rerun()
+                                with st.spinner("⏳ Processando..."):
+                                    try:
+                                        repo_acordo.confirmar_pagamento_admin(
+                                            pag["id"], usuario.id,
+                                        )
+                                        repos_auxiliares.registrar_log(
+                                            usuario_id=usuario.id, usuario_nome=usuario.nome,
+                                            acao="CONFIRMAR_PAGAMENTO_ADMIN", entidade="parcela",
+                                            entidade_id=parcela_id,
+                                            contexto=f"{acordo.numero_interno} · Parcela {parcela.numero}",
+                                            depois={"valor": pag["valor"], "data": pag["data_pagamento"]},
+                                        )
+                                        _verificar_quitacao_acordo(acordo, usuario)
+                                        st.success("✅ Pagamento confirmado!")
+                                        st.rerun()
+                                    except Exception as _e_acao:
+                                        st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                                        with st.expander("🔍 Detalhes técnicos", expanded=False):
+                                            st.exception(_e_acao)
                         else:
                             st.caption("⏳ Aguardando admin confirmar")
                     with col2:
@@ -396,19 +414,20 @@ def _linha_parcela(acordo, parcela, usuario, modo_leitura: bool, hoje: date):
                             key=f"desf_{parcela.numero}_{acordo.id}",
                             use_container_width=True,
                         ):
-                            try:
-                                repo_acordo.desfazer_confirmacao_cobranca(pag["id"])
-                                repos_auxiliares.registrar_log(
-                                    usuario_id=usuario.id, usuario_nome=usuario.nome,
-                                    acao="DESFAZER_CONFIRMACAO_COBRANCA",
-                                    entidade="parcela", entidade_id=parcela_id,
-                                    contexto=f"{acordo.numero_interno} · Parcela {parcela.numero}",
-                                    antes={"valor": pag["valor"]},
-                                )
-                                st.success("✓ Confirmação desfeita.")
-                                st.rerun()
-                            except ValueError as e:
-                                st.error(str(e))
+                            with st.spinner("⏳ Processando..."):
+                                try:
+                                    repo_acordo.desfazer_confirmacao_cobranca(pag["id"])
+                                    repos_auxiliares.registrar_log(
+                                        usuario_id=usuario.id, usuario_nome=usuario.nome,
+                                        acao="DESFAZER_CONFIRMACAO_COBRANCA",
+                                        entidade="parcela", entidade_id=parcela_id,
+                                        contexto=f"{acordo.numero_interno} · Parcela {parcela.numero}",
+                                        antes={"valor": pag["valor"]},
+                                    )
+                                    st.success("✓ Confirmação desfeita.")
+                                    st.rerun()
+                                except ValueError as e:
+                                    st.error(str(e))
                     with col3:
                         if st.button(
                             "📅 Remarcar data",
@@ -1091,12 +1110,13 @@ def _aba_comentarios(acordo, usuario):
             # Só permite excluir o próprio comentário
             if c["usuario_id"] == usuario.id:
                 if st.button("🗑", key=f"del_com_{c['id']}", help="Excluir comentário"):
-                    try:
-                        repo_extras.excluir_comentario(c["id"], usuario.id)
-                        st.toast("✅ Comentário excluído", icon="✅")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ Erro ao excluir: {e}")
+                    with st.spinner("⏳ Processando..."):
+                        try:
+                            repo_extras.excluir_comentario(c["id"], usuario.id)
+                            st.toast("✅ Comentário excluído", icon="✅")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Erro ao excluir: {e}")
 
 
 def _aba_promessas(acordo, usuario):
@@ -1209,12 +1229,24 @@ def _aba_promessas(acordo, usuario):
                 col_ok, col_no = st.columns(2)
                 with col_ok:
                     if st.button("✅ Cumpriu", key=f"prom_ok_{p['id']}", use_container_width=True):
-                        repo_extras.atualizar_status_promessa(p["id"], "CUMPRIDA")
-                        st.rerun()
+                        with st.spinner("⏳ Processando..."):
+                            try:
+                                repo_extras.atualizar_status_promessa(p["id"], "CUMPRIDA")
+                                st.rerun()
+                            except Exception as _e_acao:
+                                st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                                with st.expander("🔍 Detalhes técnicos", expanded=False):
+                                    st.exception(_e_acao)
                 with col_no:
                     if st.button("❌ Quebrou", key=f"prom_no_{p['id']}", use_container_width=True):
-                        repo_extras.atualizar_status_promessa(p["id"], "QUEBRADA")
-                        st.rerun()
+                        with st.spinner("⏳ Processando..."):
+                            try:
+                                repo_extras.atualizar_status_promessa(p["id"], "QUEBRADA")
+                                st.rerun()
+                            except Exception as _e_acao:
+                                st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                                with st.expander("🔍 Detalhes técnicos", expanded=False):
+                                    st.exception(_e_acao)
 
 
 def _aba_historico(acordo, usuario):
@@ -1271,27 +1303,28 @@ def _confirmar_mudanca_status(acordo, usuario, novo: StatusAcordo, msg: str):
             type="primary",
             key=f"sim_{chave}",
         ):
-            try:
-                from src.banco.repo_acordo import atualizar_status
-                atualizar_status(acordo.id, novo)
-                repos_auxiliares.registrar_log(
-                    usuario_id=usuario.id, usuario_nome=usuario.nome,
-                    acao=f"ALTERAR_STATUS_{novo.value}",
-                    entidade="acordo", entidade_id=acordo.id,
-                    contexto=acordo.numero_interno,
-                    antes={"status": acordo.status.value},
-                    depois={"status": novo.value},
-                )
-                del st.session_state[chave]
-                st.session_state["detalhe_acordo_msg"] = (
-                    "sucesso",
-                    f"✅ Acordo {acordo.numero_interno} marcado como {novo.value}!"
-                )
-                st.toast(f"✅ Status alterado pra {novo.value}", icon="✅")
-                st.rerun()
-            except Exception as e:
-                st.error(f"❌ Erro ao alterar status: {e}")
-                st.exception(e)
+            with st.spinner("⏳ Processando..."):
+                try:
+                    from src.banco.repo_acordo import atualizar_status
+                    atualizar_status(acordo.id, novo)
+                    repos_auxiliares.registrar_log(
+                        usuario_id=usuario.id, usuario_nome=usuario.nome,
+                        acao=f"ALTERAR_STATUS_{novo.value}",
+                        entidade="acordo", entidade_id=acordo.id,
+                        contexto=acordo.numero_interno,
+                        antes={"status": acordo.status.value},
+                        depois={"status": novo.value},
+                    )
+                    del st.session_state[chave]
+                    st.session_state["detalhe_acordo_msg"] = (
+                        "sucesso",
+                        f"✅ Acordo {acordo.numero_interno} marcado como {novo.value}!"
+                    )
+                    st.toast(f"✅ Status alterado pra {novo.value}", icon="✅")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Erro ao alterar status: {e}")
+                    st.exception(e)
     with cc2:
         if st.button("Não", key=f"nao_{chave}"):
             del st.session_state[chave]
@@ -1339,26 +1372,32 @@ def _botoes_exportar_documentos(acordo, usuario):
     with c1:
         if st.button("📋 Termo de Acordo", use_container_width=True,
                      key=f"btn_termo_{acordo.id}"):
-            pdf = gerar_pdf_termo_acordo(
-                cliente_nome=acordo.cliente_nome,
-                cliente_cnpj=cli_cnpj,
-                cliente_endereco=cli_endereco,
-                cliente_bairro=cli_bairro,
-                cliente_cidade=cli_cidade,
-                cliente_uf=cli_uf,
-                boletos=acordo.boletos,
-                parcelas=acordo.parcelas,
-                tipo_cobranca=acordo.tipo_cobranca.value,
-            )
-            st.session_state[f"pdf_termo_bytes_{acordo.id}"] = pdf
-            st.session_state[f"pdf_termo_nome_{acordo.id}"] = (
-                f"TermoAcordo_{slug}_{data_str}.pdf"
-            )
-            repos_auxiliares.registrar_log(
-                usuario_id=usuario.id, usuario_nome=usuario.nome,
-                acao="EXPORTAR_TERMO_ACORDO", entidade="acordo",
-                entidade_id=acordo.id, contexto=acordo.numero_interno,
-            )
+            with st.spinner("⏳ Processando..."):
+                try:
+                    pdf = gerar_pdf_termo_acordo(
+                        cliente_nome=acordo.cliente_nome,
+                        cliente_cnpj=cli_cnpj,
+                        cliente_endereco=cli_endereco,
+                        cliente_bairro=cli_bairro,
+                        cliente_cidade=cli_cidade,
+                        cliente_uf=cli_uf,
+                        boletos=acordo.boletos,
+                        parcelas=acordo.parcelas,
+                        tipo_cobranca=acordo.tipo_cobranca.value,
+                    )
+                    st.session_state[f"pdf_termo_bytes_{acordo.id}"] = pdf
+                    st.session_state[f"pdf_termo_nome_{acordo.id}"] = (
+                        f"TermoAcordo_{slug}_{data_str}.pdf"
+                    )
+                    repos_auxiliares.registrar_log(
+                        usuario_id=usuario.id, usuario_nome=usuario.nome,
+                        acao="EXPORTAR_TERMO_ACORDO", entidade="acordo",
+                        entidade_id=acordo.id, contexto=acordo.numero_interno,
+                    )
+                except Exception as _e_acao:
+                    st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                    with st.expander("🔍 Detalhes técnicos", expanded=False):
+                        st.exception(_e_acao)
 
         if f"pdf_termo_bytes_{acordo.id}" in st.session_state:
             st.download_button(
@@ -1373,26 +1412,32 @@ def _botoes_exportar_documentos(acordo, usuario):
     with c2:
         if st.button("📜 Termo de Confissão", use_container_width=True,
                      key=f"btn_conf_{acordo.id}"):
-            pdf = gerar_pdf_termo_confissao(
-                cliente_nome=acordo.cliente_nome,
-                cliente_cnpj=cli_cnpj,
-                cliente_endereco=cli_endereco,
-                cliente_bairro=cli_bairro,
-                cliente_cidade=cli_cidade,
-                cliente_uf=cli_uf,
-                boletos=acordo.boletos,
-                parcelas=acordo.parcelas,
-                tipo_cobranca="Boleto Bancário",
-            )
-            st.session_state[f"pdf_conf_bytes_{acordo.id}"] = pdf
-            st.session_state[f"pdf_conf_nome_{acordo.id}"] = (
-                f"TermoConfissao_{slug}_{data_str}.pdf"
-            )
-            repos_auxiliares.registrar_log(
-                usuario_id=usuario.id, usuario_nome=usuario.nome,
-                acao="EXPORTAR_TERMO_CONFISSAO", entidade="acordo",
-                entidade_id=acordo.id, contexto=acordo.numero_interno,
-            )
+            with st.spinner("⏳ Processando..."):
+                try:
+                    pdf = gerar_pdf_termo_confissao(
+                        cliente_nome=acordo.cliente_nome,
+                        cliente_cnpj=cli_cnpj,
+                        cliente_endereco=cli_endereco,
+                        cliente_bairro=cli_bairro,
+                        cliente_cidade=cli_cidade,
+                        cliente_uf=cli_uf,
+                        boletos=acordo.boletos,
+                        parcelas=acordo.parcelas,
+                        tipo_cobranca="Boleto Bancário",
+                    )
+                    st.session_state[f"pdf_conf_bytes_{acordo.id}"] = pdf
+                    st.session_state[f"pdf_conf_nome_{acordo.id}"] = (
+                        f"TermoConfissao_{slug}_{data_str}.pdf"
+                    )
+                    repos_auxiliares.registrar_log(
+                        usuario_id=usuario.id, usuario_nome=usuario.nome,
+                        acao="EXPORTAR_TERMO_CONFISSAO", entidade="acordo",
+                        entidade_id=acordo.id, contexto=acordo.numero_interno,
+                    )
+                except Exception as _e_acao:
+                    st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                    with st.expander("🔍 Detalhes técnicos", expanded=False):
+                        st.exception(_e_acao)
 
         if f"pdf_conf_bytes_{acordo.id}" in st.session_state:
             st.download_button(
@@ -1408,21 +1453,27 @@ def _botoes_exportar_documentos(acordo, usuario):
         with c3:
             if st.button("✅ Carta de Quitação", use_container_width=True,
                          key=f"btn_quit_{acordo.id}", type="primary"):
-                pdf = gerar_pdf_carta_quitacao(
-                    cliente_nome=acordo.cliente_nome,
-                    cliente_cnpj=cli_cnpj,
-                    boletos=acordo.boletos,
-                    nome_signatario=usuario.nome,
-                )
-                st.session_state[f"pdf_quit_bytes_{acordo.id}"] = pdf
-                st.session_state[f"pdf_quit_nome_{acordo.id}"] = (
-                    f"CartaQuitacao_{slug}_{data_str}.pdf"
-                )
-                repos_auxiliares.registrar_log(
-                    usuario_id=usuario.id, usuario_nome=usuario.nome,
-                    acao="EXPORTAR_CARTA_QUITACAO", entidade="acordo",
-                    entidade_id=acordo.id, contexto=acordo.numero_interno,
-                )
+                with st.spinner("⏳ Processando..."):
+                    try:
+                        pdf = gerar_pdf_carta_quitacao(
+                            cliente_nome=acordo.cliente_nome,
+                            cliente_cnpj=cli_cnpj,
+                            boletos=acordo.boletos,
+                            nome_signatario=usuario.nome,
+                        )
+                        st.session_state[f"pdf_quit_bytes_{acordo.id}"] = pdf
+                        st.session_state[f"pdf_quit_nome_{acordo.id}"] = (
+                            f"CartaQuitacao_{slug}_{data_str}.pdf"
+                        )
+                        repos_auxiliares.registrar_log(
+                            usuario_id=usuario.id, usuario_nome=usuario.nome,
+                            acao="EXPORTAR_CARTA_QUITACAO", entidade="acordo",
+                            entidade_id=acordo.id, contexto=acordo.numero_interno,
+                        )
+                    except Exception as _e_acao:
+                        st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                        with st.expander("🔍 Detalhes técnicos", expanded=False):
+                            st.exception(_e_acao)
 
             if f"pdf_quit_bytes_{acordo.id}" in st.session_state:
                 st.download_button(
@@ -1442,27 +1493,33 @@ def _botao_exportar_xlsx(acordo, usuario):
     nome_arq = f"Acordo_{slugificar(acordo.cliente_nome)}_{datetime.now().strftime('%Y%m%d')}.xlsx"
 
     if st.button("📊 XLSX", use_container_width=True):
-        xlsx = gerar_xlsx_acordo(
-            numero_acordo=acordo.numero_interno,
-            cliente_nome=acordo.cliente_nome,
-            negociador_nome=acordo.negociador_nome,
-            data_acordo=acordo.data_acordo,
-            data_emissao=date.today(),
-            pct_juros_titulos=acordo.pct_juros_mes_titulos,
-            pct_multa_titulos=acordo.pct_multa_titulos,
-            pct_juros_mora=acordo.pct_juros_mora_mes,
-            pct_multa_mora=acordo.pct_multa_mora,
-            tipo_cobranca=acordo.tipo_cobranca.value,
-            boletos=acordo.boletos,
-            parcelas=acordo.parcelas,
-        )
-        st.session_state[f"xlsx_bytes_{acordo.id}"] = xlsx
-        st.session_state[f"xlsx_nome_{acordo.id}"] = nome_arq
-        repos_auxiliares.registrar_log(
-            usuario_id=usuario.id, usuario_nome=usuario.nome,
-            acao="EXPORTAR_XLSX", entidade="acordo",
-            entidade_id=acordo.id, contexto=acordo.numero_interno,
-        )
+        with st.spinner("⏳ Processando..."):
+            try:
+                xlsx = gerar_xlsx_acordo(
+                    numero_acordo=acordo.numero_interno,
+                    cliente_nome=acordo.cliente_nome,
+                    negociador_nome=acordo.negociador_nome,
+                    data_acordo=acordo.data_acordo,
+                    data_emissao=date.today(),
+                    pct_juros_titulos=acordo.pct_juros_mes_titulos,
+                    pct_multa_titulos=acordo.pct_multa_titulos,
+                    pct_juros_mora=acordo.pct_juros_mora_mes,
+                    pct_multa_mora=acordo.pct_multa_mora,
+                    tipo_cobranca=acordo.tipo_cobranca.value,
+                    boletos=acordo.boletos,
+                    parcelas=acordo.parcelas,
+                )
+                st.session_state[f"xlsx_bytes_{acordo.id}"] = xlsx
+                st.session_state[f"xlsx_nome_{acordo.id}"] = nome_arq
+                repos_auxiliares.registrar_log(
+                    usuario_id=usuario.id, usuario_nome=usuario.nome,
+                    acao="EXPORTAR_XLSX", entidade="acordo",
+                    entidade_id=acordo.id, contexto=acordo.numero_interno,
+                )
+            except Exception as _e_acao:
+                st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                with st.expander("🔍 Detalhes técnicos", expanded=False):
+                    st.exception(_e_acao)
 
     if f"xlsx_bytes_{acordo.id}" in st.session_state:
         st.download_button(

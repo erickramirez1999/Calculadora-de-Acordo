@@ -11,12 +11,14 @@ from typing import List
 import streamlit as st
 
 from src.banco import repo_portal, repos_auxiliares
+from src.utils.feedback import drenar_mensagens
 from src.utils.formatadores import formatar_brl, formatar_data
 from src.utils.marca import AZUL_ESCURO, AMARELO, VERDE
 
 
 def renderizar_portal():
     """Ponto de entrada do portal público."""
+    drenar_mensagens()
     # Pega token da URL
     qparams = st.query_params
     token = qparams.get("token", "")
@@ -259,24 +261,30 @@ def renderizar_portal():
         key="port_enviar",
     ):
         # Cria a proposta
-        repo_portal.criar_proposta(
-            token_id=info["id"],
-            cliente_id=cliente_id,
-            titulos_ids=titulos_ids_sel,
-            periodicidade=periodicidade,
-            qtd_parcelas=int(qtd_parcelas),
-            data_primeira_parcela=data_primeira.isoformat(),
-            valor_parcela=valor_parcela,
-            valor_total=valor_parcela * qtd_parcelas,
-            observacao_cliente=observacao if observacao else None,
-        )
-        # Marca títulos como EM_PROPOSTA
-        repo_portal.marcar_titulos_em_proposta(titulos_ids_sel)
-        # Invalida o token (já foi usado)
-        repo_portal.marcar_token_usado(info["id"])
-        # Marca na sessão
-        st.session_state[f"proposta_enviada_{token}"] = True
-        st.rerun()
+        with st.spinner("⏳ Processando..."):
+            try:
+                repo_portal.criar_proposta(
+                    token_id=info["id"],
+                    cliente_id=cliente_id,
+                    titulos_ids=titulos_ids_sel,
+                    periodicidade=periodicidade,
+                    qtd_parcelas=int(qtd_parcelas),
+                    data_primeira_parcela=data_primeira.isoformat(),
+                    valor_parcela=valor_parcela,
+                    valor_total=valor_parcela * qtd_parcelas,
+                    observacao_cliente=observacao if observacao else None,
+                )
+                # Marca títulos como EM_PROPOSTA
+                repo_portal.marcar_titulos_em_proposta(titulos_ids_sel)
+                # Invalida o token (já foi usado)
+                repo_portal.marcar_token_usado(info["id"])
+                # Marca na sessão
+                st.session_state[f"proposta_enviada_{token}"] = True
+                st.rerun()
+            except Exception as _e_acao:
+                st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                with st.expander("🔍 Detalhes técnicos", expanded=False):
+                    st.exception(_e_acao)
 
 
 # ============================================================

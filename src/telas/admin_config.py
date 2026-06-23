@@ -15,10 +15,12 @@ from __future__ import annotations
 import streamlit as st
 
 from src.modelos.tipos import PerfilUsuario
+from src.utils.feedback import drenar_mensagens
 from src.utils.marca import AZUL_ESCURO
 
 
 def renderizar_admin_config(usuario):
+    drenar_mensagens()
     st.markdown(
         f"<h1 style='color:{AZUL_ESCURO}'>⚙ Configurações</h1>",
         unsafe_allow_html=True,

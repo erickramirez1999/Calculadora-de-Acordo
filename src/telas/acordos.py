@@ -23,6 +23,7 @@ import streamlit as st
 from src.banco import repo_acordo
 from src.banco.repo_acordo import AcordoResumo
 from src.modelos.tipos import PerfilUsuario, StatusAcordo
+from src.utils.feedback import drenar_mensagens
 from src.utils.estilo import (
     AZUL_ESCURO, AMARELO, VERDE, AZUL_VIVO,
     barra_progresso, badge_status_acordo,
@@ -41,6 +42,7 @@ COR_QUITADO = "#0F8C3B"           # verde
 
 
 def renderizar_acordos(usuario):
+    drenar_mensagens()
     st.markdown(f"<h1 style='color:{MARCA_AZUL}'>📊 Acordos</h1>", unsafe_allow_html=True)
     st.caption(
         "Consulta completa de acordos com filtros avançados. "

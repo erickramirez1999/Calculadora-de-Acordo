@@ -17,6 +17,8 @@ from time import time
 import pandas as pd
 import streamlit as st
 
+from src.utils.feedback import drenar_mensagens
+
 from src.banco import repo_cliente, repo_usuario
 from src.banco.repo_acordo import salvar_acordo_completo
 from src.modelos.tipos import (
@@ -41,6 +43,7 @@ def _fmt_real(v: float | int | None) -> str:
 
 
 def renderizar(usuario):
+    drenar_mensagens()
     st.markdown("## 📥 Importar Acordo Pronto")
     st.caption(
         "Importa acordos já montados (PDF do sistema LLE ou XLSX) "
@@ -323,17 +326,23 @@ def _fluxo_pdfs(arquivos_pdf, usuario, hash_combinado):
     ):
         # Marca como processando ANTES de qualquer coisa
         st.session_state[f"imp_processando_pdf_{hash_combinado}"] = True
-        _executar_importacao_pdf(
-            grupo=grupo,
-            usuario=usuario,
-            negociador_id=negociador_id,
-            data_acordo=data_acordo_input,
-            tipo_cobranca=tipo_cobranca,
-            periodicidade=periodicidade,
-            intervalo_dias=int(intervalo_pers),
-            observacoes=observacoes,
-            hash_combinado=hash_combinado,
-        )
+        with st.spinner("⏳ Importando acordo... não recarregue a página."):
+            try:
+                _executar_importacao_pdf(
+                    grupo=grupo,
+                    usuario=usuario,
+                    negociador_id=negociador_id,
+                    data_acordo=data_acordo_input,
+                    tipo_cobranca=tipo_cobranca,
+                    periodicidade=periodicidade,
+                    intervalo_dias=int(intervalo_pers),
+                    observacoes=observacoes,
+                    hash_combinado=hash_combinado,
+                )
+            except Exception as _e_acao:
+                st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                with st.expander("🔍 Detalhes técnicos", expanded=False):
+                    st.exception(_e_acao)
 
 
 def _executar_importacao_pdf(
@@ -342,9 +351,6 @@ def _executar_importacao_pdf(
     intervalo_dias: int, observacoes: str, hash_combinado: str,
 ):
     """Cria o acordo no banco a partir do grupo de termos PDF."""
-    # Aviso visual durante processamento (rerun vai limpar)
-    placeholder = st.empty()
-    placeholder.info("⏳ Importando acordo... não recarregue a página.")
     try:
         # Nome do cliente principal
         nome_base = grupo.nome_devedor_principal or "Cliente importado"
@@ -608,11 +614,17 @@ def _fluxo_xlsx(arquivo, usuario, hash_combinado):
         key=f"btn_imp_xlsx_{hash_combinado[:8]}",
     ):
         st.session_state[f"imp_processando_xlsx_{hash_combinado}"] = True
-        _executar_importacao_xlsx(
-            acordo_imp, usuario, negociador_id, data_acordo_input,
-            tipo_cobranca, periodicidade, int(intervalo_pers),
-            observacoes, hash_combinado,
-        )
+        with st.spinner("⏳ Importando acordo... não recarregue a página."):
+            try:
+                _executar_importacao_xlsx(
+                    acordo_imp, usuario, negociador_id, data_acordo_input,
+                    tipo_cobranca, periodicidade, int(intervalo_pers),
+                    observacoes, hash_combinado,
+                )
+            except Exception as _e_acao:
+                st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                with st.expander("🔍 Detalhes técnicos", expanded=False):
+                    st.exception(_e_acao)
 
 
 def _executar_importacao_xlsx(
@@ -621,8 +633,6 @@ def _executar_importacao_xlsx(
     observacoes: str, hash_combinado: str,
 ):
     """Importação a partir de XLSX (formato legado)."""
-    placeholder = st.empty()
-    placeholder.info("⏳ Importando acordo... não recarregue a página.")
     try:
         nome = acordo_imp.nomes_clientes[0] if acordo_imp.nomes_clientes else "Cliente importado"
         if len(acordo_imp.nomes_clientes) > 1:

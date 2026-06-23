@@ -15,6 +15,7 @@ import streamlit as st
 
 from src.banco import repo_acordo, repo_extras, repos_auxiliares
 from src.modelos.tipos import PerfilUsuario, StatusAcordo
+from src.utils.feedback import drenar_mensagens
 from src.utils.formatadores import formatar_brl, formatar_data
 from src.utils.marca import AZUL_ESCURO, AMARELO, VERDE, AZUL_VIVO
 
@@ -29,6 +30,7 @@ COR_KPI_AMARELO = "#FAC318"
 
 def renderizar_inicio(usuario):
     """Tela inicial pós-login - Dashboard executivo."""
+    drenar_mensagens()
     primeiro_nome = usuario.nome.split()[0] if usuario.nome else "usuário"
     st.markdown(
         f"<h1 style='color:{AZUL_ESCURO};margin-bottom:4px;'>Olá, {primeiro_nome}!</h1>",
@@ -169,23 +171,35 @@ def _render_proposta_item(p, usuario, key_prefix="prop", mostrar_btn_cliente=Tru
                 "✅ Aceitar", key=f"{key_prefix}_aceitar_{p['id']}",
                 type="primary", use_container_width=True,
             ):
-                repo_portal.marcar_proposta_analisada(
-                    p["id"], "ACEITA", usuario.id,
-                    observacao=f"Aceita via {key_prefix}",
-                )
-                # Cria acordo automaticamente a partir da proposta
-                _criar_acordo_da_proposta(p, usuario)
-                st.rerun()
+                with st.spinner("⏳ Processando..."):
+                    try:
+                        repo_portal.marcar_proposta_analisada(
+                            p["id"], "ACEITA", usuario.id,
+                            observacao=f"Aceita via {key_prefix}",
+                        )
+                        # Cria acordo automaticamente a partir da proposta
+                        _criar_acordo_da_proposta(p, usuario)
+                        st.rerun()
+                    except Exception as _e_acao:
+                        st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                        with st.expander("🔍 Detalhes técnicos", expanded=False):
+                            st.exception(_e_acao)
         with br:
             if st.button(
                 "❌ Recusar", key=f"{key_prefix}_recusar_{p['id']}",
                 use_container_width=True,
             ):
-                repo_portal.marcar_proposta_analisada(
-                    p["id"], "RECUSADA", usuario.id,
-                )
-                repo_portal.restaurar_titulos_em_aberto(p["titulos_ids"])
-                st.rerun()
+                with st.spinner("⏳ Processando..."):
+                    try:
+                        repo_portal.marcar_proposta_analisada(
+                            p["id"], "RECUSADA", usuario.id,
+                        )
+                        repo_portal.restaurar_titulos_em_aberto(p["titulos_ids"])
+                        st.rerun()
+                    except Exception as _e_acao:
+                        st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                        with st.expander("🔍 Detalhes técnicos", expanded=False):
+                            st.exception(_e_acao)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -548,32 +562,44 @@ def _bloco_pagamentos_aguardando(usuario, negociador_id: Optional[int] = None):
                     key=f"pag_conf_inicio_{p['pagamento_id']}",
                     type="primary", use_container_width=True,
                 ):
-                    repo_acordo.confirmar_pagamento_admin(
-                        p["pagamento_id"], usuario.id,
-                    )
-                    repos_auxiliares.registrar_log(
-                        usuario_id=usuario.id, usuario_nome=usuario.nome,
-                        acao="CONFIRMAR_PAGAMENTO_ADMIN",
-                        entidade="parcela", entidade_id=p["parcela_id"],
-                        contexto=f"{p['numero_interno']} · Parc. {p['parcela_numero']}",
-                        depois={"valor": p["valor"]},
-                    )
-                    st.rerun()
+                    with st.spinner("⏳ Processando..."):
+                        try:
+                            repo_acordo.confirmar_pagamento_admin(
+                                p["pagamento_id"], usuario.id,
+                            )
+                            repos_auxiliares.registrar_log(
+                                usuario_id=usuario.id, usuario_nome=usuario.nome,
+                                acao="CONFIRMAR_PAGAMENTO_ADMIN",
+                                entidade="parcela", entidade_id=p["parcela_id"],
+                                contexto=f"{p['numero_interno']} · Parc. {p['parcela_numero']}",
+                                depois={"valor": p["valor"]},
+                            )
+                            st.rerun()
+                        except Exception as _e_acao:
+                            st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                            with st.expander("🔍 Detalhes técnicos", expanded=False):
+                                st.exception(_e_acao)
             with be:
                 if st.button(
                     "❌ Estornar",
                     key=f"pag_est_inicio_{p['pagamento_id']}",
                     use_container_width=True,
                 ):
-                    repo_acordo.estornar_pagamento(p["pagamento_id"])
-                    repos_auxiliares.registrar_log(
-                        usuario_id=usuario.id, usuario_nome=usuario.nome,
-                        acao="ESTORNAR_PAGAMENTO",
-                        entidade="parcela", entidade_id=p["parcela_id"],
-                        contexto=f"{p['numero_interno']} · Parc. {p['parcela_numero']}",
-                        antes={"valor": p["valor"]},
-                    )
-                    st.rerun()
+                    with st.spinner("⏳ Processando..."):
+                        try:
+                            repo_acordo.estornar_pagamento(p["pagamento_id"])
+                            repos_auxiliares.registrar_log(
+                                usuario_id=usuario.id, usuario_nome=usuario.nome,
+                                acao="ESTORNAR_PAGAMENTO",
+                                entidade="parcela", entidade_id=p["parcela_id"],
+                                contexto=f"{p['numero_interno']} · Parc. {p['parcela_numero']}",
+                                antes={"valor": p["valor"]},
+                            )
+                            st.rerun()
+                        except Exception as _e_acao:
+                            st.error(f"❌ Erro: {type(_e_acao).__name__}: {_e_acao}")
+                            with st.expander("🔍 Detalhes técnicos", expanded=False):
+                                st.exception(_e_acao)
         st.markdown("<hr style='margin:4px 0; border-color:#EEE;'>", unsafe_allow_html=True)
 
     if len(pendentes) > 5:
